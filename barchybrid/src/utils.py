@@ -86,8 +86,8 @@ class UDtreebank(Treebank):
             self.trainfile = files_prefix + "-ud-train.conllu"
             self.devfile = files_prefix + "-ud-dev.conllu"
             #TODO: change if using data that has the test sets
-            self.testfile = files_prefix + "-ud-dev.conllu"
-            self.test_gold= files_prefix + "-ud-dev.conllu"
+            self.testfile = files_prefix + "-ud-test.conllu"
+            self.test_gold= files_prefix + "-ud-test.conllu"
             self.dev_gold= files_prefix + "-ud-dev.conllu"
             self.outfilename = self.iso_id + '.conllu'
 
@@ -134,27 +134,47 @@ def isProj(sentence):
     return len(forest.roots) == 1
 
 
-def vocab(conll_path, path_is_dir=False):
+def vocab(conll_path, path_is_dir=False,shareWordDict=True,shareCharDict=True):
     """
     Collect frequencies of words, cpos, pos and deprels + languages.
     """
-    wordsCount = Counter()
-    charsCount = Counter()
     posCount = Counter()
     cposCount = Counter()
     relCount = Counter()
     langCounter = Counter()
+    if shareWordDict:
+        wordsCount = Counter()
+    else:
+        wordsCount = {}
+    if shareCharDict:
+        charsCount = Counter()
+    else:
+        charsCount = {}
 
     if path_is_dir:
         data = read_conll_dir(conll_path,"train")
     else:
         data = read_conll(conll_path, vocab_prep=True)
 
+    cur_lang = ""
+
     for sentence in data:
-        wordsCount.update([node.norm for node in sentence if isinstance(node, ConllEntry)])
+        if sentence[0].language_id != cur_lang:
+            cur_lang = sentence[0].language_id
+            if not shareWordDict:
+                wordsCount[cur_lang] = Counter()
+            if not shareCharDict:
+                charsCount[cur_lang] = Counter()
+        if shareWordDict:
+            wordsCount.update([node.norm for node in sentence if isinstance(node, ConllEntry)])
+        else:
+            wordsCount[cur_lang].update([node.norm for node in sentence if isinstance(node, ConllEntry)])
         for node in sentence:
-            if isinstance(node, ConllEntry) and not node.form == u"*root*":
-                charsCount.update(node.form)
+            if isinstance(node, ConllEntry):
+                if shareCharDict:
+                    charsCount.update(node.form)
+                else:
+                    charsCount[cur_lang].update(node.form)
         #TODO: aren't counters an overkill if we then just use the keys?
         posCount.update([node.pos for node in sentence if isinstance(node, ConllEntry)])
         cposCount.update([node.cpos for node in sentence if isinstance(node, ConllEntry)])
@@ -163,10 +183,23 @@ def vocab(conll_path, path_is_dir=False):
         if path_is_dir:
             langCounter.update([node.language_id for node in sentence if
                                 isinstance(node, ConllEntry)])
+    if shareWordDict:
+        words = wordsCount.keys()
+    else:
+        words = {}
+        for lang in wordsCount:
+            words[lang] = wordsCount[lang].keys()
 
-    return (wordsCount, {w: i for i, w in enumerate(wordsCount.keys())},
+    if shareCharDict:
+        chars = charsCount.keys()
+    else:
+        chars = {}
+        for lang in charsCount:
+            chars[lang] = charsCount[lang].keys()
+
+    return (wordsCount, words,
             posCount.keys(), cposCount.keys(), relCount.keys(),
-            langCounter.keys() if langCounter else None, charsCount.keys())
+            langCounter.keys() if langCounter else None, chars)
 
 
 def conll_dir_to_list(languages, data_dir,shared_task=False, shared_task_data_dir=None):

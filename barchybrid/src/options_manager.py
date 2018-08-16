@@ -14,6 +14,7 @@ class OptionsManager(object):
         """
 
         print 'Using external embedding:', options.external_embedding
+        self.deal_with_multiling(options)
 
         if options.include and not options.datadir:
             raise Exception("You need to specify the data dir to include UD languages")
@@ -193,3 +194,31 @@ class OptionsManager(object):
            utils.write_conll(test_file,testdata) # write the new dev data to file
            treebank.test_gold = test_file
            treebank.testfile = test_file
+
+    def deal_with_multiling(self,options):
+        if options.word == 'shared':
+            options.shareBiLSTM = True
+        elif options.word == 'not_shared':
+            options.shareBiLSTM = False
+            options.shareWordLookup = False
+        elif options.word == 'shared_lembed':
+            options.shareBiLSTM = True
+            options.lembed_word=True
+
+        if options.mlp == 'shared':
+            options.shareMLP =  True
+        elif options.mlp == 'not_shared':
+            options.shareMLP = False
+        elif options.mlp == 'shared_lembed':
+            options.shareMLP =  True
+            options.lembed_config=True
+
+        if options.char == 'shared':
+            options.shareCharLookup = True
+        elif options.char == 'not_shared':
+            options.shareCharLookup = False
+            options.shareCharBiLSTM = False
+        elif options.char == 'share_lembed':
+            options.char = True
+            options.lembed_char = True
+

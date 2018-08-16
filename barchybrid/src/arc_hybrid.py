@@ -9,6 +9,9 @@ from copy import deepcopy
 
 class ArcHybridLSTM:
     def __init__(self, words, pos, rels, cpos, langs, w2i, ch, options):
+        """
+        0 = LA, 1 = RA, 2 = SH, 3 = SW
+        """
 
         import dynet as dy # import here so we don't load Dynet if just running parser.py --help for example
         global dy
@@ -22,8 +25,11 @@ class ArcHybridLSTM:
         self.activation = self.activations[options.activation]
 
         self.oracle = options.oracle
+        self.shareMLP = options.shareMLP
+        self.config_lembed = options.lembed_config
 
 
+        #vectors used
         self.headFlag = options.headFlag
         self.rlMostFlag = options.rlMostFlag
         self.rlFlag = options.rlFlag
@@ -31,41 +37,63 @@ class ArcHybridLSTM:
 
         #dimensions depending on extended features
         self.nnvecs = (1 if self.headFlag else 0) + (2 if self.rlFlag or self.rlMostFlag else 0)
-        self.feature_extractor = FeatureExtractor(self.model,options,words,rels,langs,w2i,ch,self.nnvecs)
+        self.feature_extractor = FeatureExtractor(self.model,words,rels,langs,w2i,ch,self.nnvecs,options)
         self.irels = self.feature_extractor.irels
 
-
+        #mlps
         mlp_in_dims = options.lstm_output_size*2*self.nnvecs*(self.k+1)
-        self.unlabeled_MLP = MLP(self.model, 'unlabeled', mlp_in_dims, options.mlp_hidden_dims,
-                                 options.mlp_hidden2_dims, 4, self.activation)
-        self.labeled_MLP = MLP(self.model, 'labeled' ,mlp_in_dims, options.mlp_hidden_dims,
-                               options.mlp_hidden2_dims,2*len(self.irels)+2,self.activation)
+        if self.config_lembed:
+            mlp_in_dims += options.lang_emb_size
 
+        h1 = options.mlp_hidden_dims
+        h2 = options.mlp_hidden2_dims
+        if not options.multiling or self.shareMLP:
+            self.unlabeled_MLP = MLP(self.model,mlp_in_dims, h1,h2,4, self.activation)
+            self.labeled_MLP = MLP(self.model,mlp_in_dims, h1,h2,2*len(rels)+2,self.activation)
+        else:
+            self.labeled_mlpdict = {}
+            for lang in self.feature_extractor.langs:
+                self.labeled_mlpdict[lang] = MLP(self.model,mlp_in_dims,
+                                       h1,h2,2*len(rels)+2,self.activation)
+
+            self.unlabeled_mlpdict = {}
+            for lang in self.feature_extractor.langs:
+                self.unlabeled_mlpdict[lang] = MLP(self.model, mlp_in_dims,
+                                             h1,h2,4,self.activation)
 
     def __evaluate(self, stack, buf, train):
         """
-        ret = [left arc,
-               right arc
-               shift]
+        Output: a list of tuples per transition:
+        [left arc, right arc, shift, swap]
 
-        RET[i] = (rel, transition, score1, score2) for shift, l_arc and r_arc
-         shift = 2 (==> rel=None) ; l_arc = 0; r_acr = 1
+        output[i] = (rel, transition, score1, score2)
+        rel = None for shift and swap
 
-        ret[i][j][2] ~= ret[i][j][3] except the latter is a dynet
+        output[i][j][2] ~= output[i][j][3] except the latter is a dynet
         expression used in the loss, the first is used in rest of training
+        TODO: it is ugly and a headache to debug...
         """
 
         #feature rep
-        empty = self.feature_extractor.empty
+        lang = buf.roots[0].language_id
+        if not self.feature_extractor.multiling or self.feature_extractor.shareWordLookup:
+            empty = self.feature_extractor.empty
+        else:
+            empty = self.feature_extractor.emptyVecs[lang]
         topStack = [ stack.roots[-i-1].lstms if len(stack) > i else [empty] for i in xrange(self.k) ]
         topBuffer = [ buf.roots[i].lstms if len(buf) > i else [empty] for i in xrange(1) ]
 
         input = dy.concatenate(list(chain(*(topStack + topBuffer))))
-        output = self.unlabeled_MLP(input)
-        routput = self.labeled_MLP(input)
+        if self.config_lembed:
+            langvec = self.feature_extractor.langslookup[self.feature_extractor.langs[lang]]
+            input = dy.concatenate([input,langvec])
+        if not self.feature_extractor.multiling or self.shareMLP:
+            routput = self.labeled_MLP(input)
+            output = self.unlabeled_MLP(input)
+        else:
+            routput = self.labeled_mlpdict[lang](input)
+            output = self.unlabeled_mlpdict[lang](input)
 
-
-        #scores, unlabeled scores
         scrs, uscrs = routput.value(), output.value()
 
         #transition conditions
@@ -79,6 +107,7 @@ class ArcHybridLSTM:
             #if stack has more than one element
             left_arc_conditions = left_arc_conditions and not (buf.roots[0].id == 0 and len(stack) > 1)
 
+
         uscrs0 = uscrs[0] #shift
         uscrs1 = uscrs[1] #swap
         uscrs2 = uscrs[2] #left-arc
@@ -90,11 +119,10 @@ class ArcHybridLSTM:
             output2 = output[2]
             output3 = output[3]
 
-
             ret = [ [ (rel, 0, scrs[2 + j * 2] + uscrs2, routput[2 + j * 2 ] + output2) for j, rel in enumerate(self.irels) ] if left_arc_conditions else [],
                    [ (rel, 1, scrs[3 + j * 2] + uscrs3, routput[3 + j * 2 ] + output3) for j, rel in enumerate(self.irels) ] if right_arc_conditions else [],
                    [ (None, 2, scrs[0] + uscrs0, routput[0] + output0) ] if shift_conditions else [] ,
-                    [ (None, 3, scrs[1] + uscrs1, routput[1] + output1) ] if swap_conditions else [] ]
+                   [ (None, 3, scrs[1] + uscrs1, routput[1] + output1) ] if swap_conditions else [] ]
         else:
             s1,r1 = max(zip(scrs[2::2],self.irels))
             s2,r2 = max(zip(scrs[3::2],self.irels))
@@ -103,9 +131,8 @@ class ArcHybridLSTM:
             ret = [ [ (r1, 0, s1) ] if left_arc_conditions else [],
                    [ (r2, 1, s2) ] if right_arc_conditions else [],
                    [ (None, 2, scrs[0] + uscrs0) ] if shift_conditions else [] ,
-                    [ (None, 3, scrs[1] + uscrs1) ] if swap_conditions else [] ]
+                   [ (None, 3, scrs[1] + uscrs1) ] if swap_conditions else [] ]
         return ret
-
 
     def Save(self, filename):
         print 'Saving model to ' + filename
@@ -114,7 +141,6 @@ class ArcHybridLSTM:
     def Load(self, filename):
         print 'Loading model from ' + filename
         self.model.populate(filename)
-
 
     def apply_transition(self,best,stack,buf,hoffset):
         if best[1] == 2:
@@ -146,10 +172,10 @@ class ArcHybridLSTM:
 
         #update the representation of head for attaching transitions
         if best[1] == 0 or best[1] == 1:
-            #linear order #not really - more like the deepest
+            #deepest leftmost/rightmost child
             if self.rlMostFlag:
                 parent.lstms[best[1] + hoffset] = child.lstms[best[1] + hoffset]
-                #actual children
+            #leftmost/rightmost direct child
             if self.rlFlag:
                 parent.lstms[best[1] + hoffset] = child.vec
 
@@ -206,11 +232,13 @@ class ArcHybridLSTM:
 
             hoffset = 1 if self.headFlag else 0
 
+            lang = conll_sentence[1].language_id
             for root in conll_sentence:
                 root.lstms = [root.vec] if self.headFlag else []
-                root.lstms += [self.feature_extractor.paddingVec for _ in range(self.nnvecs - hoffset)]
-                root.relation = root.relation if root.relation in self.irels else 'runk'
-
+                if not self.feature_extractor.multiling or self.feature_extractor.shareWordLookup:
+                    root.lstms += [self.feature_extractor.paddingVec for _ in range(self.nnvecs - hoffset)]
+                else:
+                    root.lstms += [self.feature_extractor.paddingVecs[lang] for _ in range(self.nnvecs - hoffset)]
 
             while not (len(buf) == 1 and len(stack) == 0):
                 scores = self.__evaluate(stack, buf, False)
@@ -275,11 +303,15 @@ class ArcHybridLSTM:
             stack = ParseForest([])
             buf = ParseForest(conll_sentence)
             hoffset = 1 if self.headFlag else 0
+            lang = conll_sentence[1].language_id
 
             for root in conll_sentence:
                 root.lstms = [root.vec] if self.headFlag else []
-                root.lstms += [self.feature_extractor.paddingVec for _ in range(self.nnvecs - hoffset)]
-                root.relation = root.relation if root.relation in self.irels else 'runk'
+                if not self.feature_extractor.multiling or self.feature_extractor.shareWordLookup:
+                    root.lstms += [self.feature_extractor.paddingVec for _ in range(self.nnvecs - hoffset)]
+                else:
+                    root.lstms += [self.feature_extractor.paddingVecs[lang] for _ in range(self.nnvecs - hoffset)]
+
 
             while not (len(buf) == 1 and len(stack) == 0):
                 scores = self.__evaluate(stack, buf, True)
@@ -310,7 +342,6 @@ class ArcHybridLSTM:
                 else:
                     #select a transition to follow
                     # + aggresive exploration
-                    #1: might want to experiment with that parameter
                     if bestWrong[1] == 3:
                         best = bestValid
                     else:
@@ -377,3 +408,4 @@ class ArcHybridLSTM:
         self.trainer.update()
         print "Loss: ", mloss/iSentence
         print "Total Training Time: %.2gs"%(time.time()-beg)
+

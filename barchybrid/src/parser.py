@@ -20,7 +20,11 @@ def run(om,options,i):
 
         print 'Preparing vocab'
         if options.multiling:
-            words, w2i, pos, cpos, rels, langs, ch = utils.vocab(om.languages, path_is_dir=True)
+            path_is_dir=True,
+            words, w2i, pos, cpos, rels, langs, ch = utils.vocab(om.languages,\
+                                                                 path_is_dir,
+                                                                 options.shareWordLookup,\
+                                                                 options.shareCharLookup)
 
         else:
             words, w2i, pos, cpos, rels, langs, ch = utils.vocab(cur_treebank.trainfile)
@@ -35,6 +39,8 @@ def run(om,options,i):
         print 'Initializing blstm arc hybrid:'
         parser = ArcHybridLSTM(words, pos, rels, cpos, langs, w2i,
                                ch, options)
+        if options.continueModel is not None:
+            parser.Load(options.continueModel)
 
         for epoch in xrange(options.first_epoch, options.first_epoch+options.epochs):
 
@@ -187,7 +193,7 @@ each")
         help="Disable choosing of model from best/last epoch", dest="model_selection", default=True)
     group.add_option("--use-default-seed", action="store_true",
         help="Use default random seed for Python", default=False)
-    #TODO: reenable this
+
     group.add_option("--continue", dest="continueTraining", action="store_true", default=False)
     group.add_option("--continueModel", metavar="FILE",
         help="Load model file, when continuing to train a previously trained model")
@@ -231,6 +237,8 @@ each")
     group.add_option("--activation", help="Activation function in the MLP", default="tanh")
     group.add_option("--disable-bilstm", action="store_true", default=False,
         help='disable the BiLSTM feature extactor')
+    group.add_option("--disable-second-bilstm", action="store_true", default=False,
+                     help='disable the BiLSTM feature extactor')
     group.add_option("--disable-lembed", action="store_false", dest="use_lembed",
         help='disable the use of a language embedding when in multilingual mode', default=True)
     parser.add_option_group(group)
@@ -251,6 +259,36 @@ each")
     group.add_option("--shared_task_datadir", dest="shared_task_datadir", default="EXP")
     group.add_option("--shared_task_outdir", dest="shared_task_outdir", default="EXP")
     parser.add_option_group(group)
+
+    """
+    Multilingual Options
+    """
+    multiling_opt = OptionGroup(parser, "Options for parameter sharing in\
+                                multilingual mode")
+    multiling_opt.add_option("--separate_mlps", action='store_false',\
+                             default=True,dest='shareMLP')
+    multiling_opt.add_option("--separate_word_lookups", action='store_false',\
+                             default=True, dest='shareWordLookup')
+    multiling_opt.add_option("--separate_char_lookup", action='store_false',\
+                             default=True, dest='shareCharLookup')
+    multiling_opt.add_option("--separate_bilstms", action='store_false',\
+                             default=True,dest='shareBiLSTM')
+    multiling_opt.add_option("--separate_char_bilstms", action='store_false',\
+                             default=True,dest='shareCharBiLSTM')
+    multiling_opt.add_option("--lembed_word",action='store_true', default=False)
+    multiling_opt.add_option("--lembed_config",action='store_true', default=False)
+    multiling_opt.add_option("--lembed_char",action='store_true', default=False)
+
+    """
+    Facilitate the naming
+    """
+    multiling_opt.add_option("--word", type="string",default='shared')
+    multiling_opt.add_option("--mlp", type="string",default='shared')
+    multiling_opt.add_option("--char", type="string",default='shared')
+
+    parser.add_option_group(multiling_opt)
+
+
 
     (options, args) = parser.parse_args()
 

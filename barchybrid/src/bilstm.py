@@ -21,7 +21,6 @@ class BiLSTM(object):
             self.surfaceBuilders[0].set_dropout(0)
             self.surfaceBuilders[1].set_dropout(0)
 
-
         forward  = self.surfaceBuilders[0].initial_state()
         backward = self.surfaceBuilders[1].initial_state()
 
@@ -47,6 +46,7 @@ class BiLSTM(object):
         else:
             self.surfaceBuilders[0].set_dropout(0)
             self.surfaceBuilders[1].set_dropout(0)
+
         forward  = self.surfaceBuilders[0].initial_state()
         backward = self.surfaceBuilders[1].initial_state()
 
