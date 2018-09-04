@@ -72,9 +72,9 @@ class UDtreebank(Treebank):
                 self.iso_id = treebank_info['lcode']
             else:
                 self.iso_id =treebank_info['lcode'] + '_' + treebank_info['tcode']
-            #self.testfile = location + self.iso_id + '.conllu'
+            self.testfile = location + self.iso_id + '.conllu'
             #setting where I have Yan's output as input
-            self.testfile = location + self.iso_id + '.txt'
+            # self.testfile = location + self.iso_id + '.txt'
             if not os.path.exists(self.testfile):
                 self.testfile = shared_task_data_dir + self.iso_id + '.conllu'
             self.dev_gold = shared_task_data_dir + self.iso_id + '.conllu'
@@ -345,7 +345,8 @@ def normalize(word):
     return 'NUM' if numberRegex.match(word) else word.lower()
 
 def evaluate(gold,test,conllu):
-    scoresfile = test + '.txt'
+    # scoresfile = test + '.txt'
+    scoresfile = test
     print "Writing to " + scoresfile
     if not conllu:
         #os.system('perl src/utils/eval.pl -g ' + gold + ' -s ' + test  + ' > ' + scoresfile + ' &')
