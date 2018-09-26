@@ -1,10 +1,13 @@
-from collections import Counter
 import re
 import os,time
-from itertools import chain
-from operator import itemgetter
 import random
 import codecs
+import pdb
+
+from itertools import chain
+from operator import itemgetter
+from collections import Counter
+
 
 # default random seeds for parser. hard-coded here to enable sharing between other modules
 #dynet_seed = 123456789
@@ -47,8 +50,9 @@ class ConllEntry:
                   self.deps, self.misc]
         return '\t'.join(['_' if v is None else v for v in values])
 
+
 class Treebank(object):
-    def __init__(self,trainfile,devfile,testfile):
+    def __init__(self, trainfile, devfile, testfile):
         self.name = 'noname'
         self.trainfile = trainfile
         self.devfile = devfile
@@ -57,8 +61,9 @@ class Treebank(object):
         self.testfile = testfile
         self.outfilename = None
 
+
 class UDtreebank(Treebank):
-    def __init__(self,treebank_info,location, shared_task=False, shared_task_data_dir=None):
+    def __init__(self,treebank_info, location, shared_task=False, shared_task_data_dir=None):
         """
         Read treebank info to a treebank object
         The treebank_info element contains different information if in
@@ -90,6 +95,7 @@ class UDtreebank(Treebank):
             self.test_gold= files_prefix + "-ud-test.conllu"
             self.dev_gold= files_prefix + "-ud-dev.conllu"
             self.outfilename = self.iso_id + '.conllu'
+
 
 class ParseForest:
     def __init__(self, sentence):
@@ -134,7 +140,7 @@ def isProj(sentence):
     return len(forest.roots) == 1
 
 
-def vocab(conll_path, path_is_dir=False,shareWordDict=True,shareCharDict=True):
+def vocab(conll_path, path_is_dir=False, shareWordDict=True, shareCharDict=True):
     """
     Collect frequencies of words, cpos, pos and deprels + languages.
     """
@@ -142,6 +148,8 @@ def vocab(conll_path, path_is_dir=False,shareWordDict=True,shareCharDict=True):
     cposCount = Counter()
     relCount = Counter()
     langCounter = Counter()
+
+    # set up the parameter sharing
     if shareWordDict:
         wordsCount = Counter()
     else:
@@ -152,13 +160,14 @@ def vocab(conll_path, path_is_dir=False,shareWordDict=True,shareCharDict=True):
         charsCount = {}
 
     if path_is_dir:
-        data = read_conll_dir(conll_path,"train")
+        data = read_conll_dir(conll_path, "train")
     else:
         data = read_conll(conll_path, vocab_prep=True)
 
     cur_lang = ""
-
     for sentence in data:
+        pdb.set_trace()
+
         if sentence[0].language_id != cur_lang:
             cur_lang = sentence[0].language_id
             if not shareWordDict:
@@ -175,10 +184,12 @@ def vocab(conll_path, path_is_dir=False,shareWordDict=True,shareCharDict=True):
                     charsCount.update(node.form)
                 else:
                     charsCount[cur_lang].update(node.form)
+
         #TODO: aren't counters an overkill if we then just use the keys?
         posCount.update([node.pos for node in sentence if isinstance(node, ConllEntry)])
         cposCount.update([node.cpos for node in sentence if isinstance(node, ConllEntry)])
         relCount.update([node.relation for node in sentence if isinstance(node, ConllEntry)])
+
         #TODO:this is hacky to do that at every word - should do it at every new lang
         if path_is_dir:
             langCounter.update([node.language_id for node in sentence if
@@ -218,22 +229,26 @@ def conll_dir_to_list(languages, data_dir,shared_task=False, shared_task_data_di
             for treebank_info in treebank_metadata ]
     return json_treebanks
 
-def read_conll_dir(languages,filetype,maxSize=-1):
+def read_conll_dir(languages, filetype, maxSize=-1):
+
     #print "Max size for each corpus: ", maxSize
     if filetype == "train":
-        return chain(*(read_conll(lang.trainfile,lang.name,maxSize) for lang in languages))
+        return chain(*(read_conll(lang.trainfile, lang.name, maxSize) for lang in languages))
     elif filetype == "dev":
-        return chain(*(read_conll(lang.devfile,lang.name) for lang in languages if lang.pred_dev))
+        return chain(*(read_conll(lang.devfile, lang.name) for lang in languages if lang.pred_dev))
     elif filetype == "test":
-        return chain(*(read_conll(lang.testfile,lang.name) for lang in languages))
+        return chain(*(read_conll(lang.testfile, lang.name) for lang in languages))
 
 def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=False, drop_nproj=False):
+    
     # hard lim means capping the corpus size across the whole training procedure
     # soft lim means using a sample of the whole corpus at each epoch
-    fh = codecs.open(filename,'r',encoding='utf-8')
+    fh = codecs.open(filename, 'r', encoding='utf-8')
     print "Reading " + filename
+    
     if vocab_prep and not hard_lim:
         maxSize = -1 # when preparing the vocab with a soft limit we need to use the whole corpus
+    
     ts = time.time()
     dropped = 0
     read = 0
@@ -241,18 +256,20 @@ def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=F
     root.language_id = language
     tokens = [root]
     yield_count = 0
+
     if maxSize > 0 and not hard_lim:
         all_tokens = []
+    
     for line in fh:
         tok = line.strip().split('\t')
         if not tok or line.strip() == '':
-            if len(tokens)>1:
-                conll_tokens = [t for t in tokens if isinstance(t,ConllEntry)]
+            if len(tokens) > 1:
+                conll_tokens = [t for t in tokens if isinstance(t, ConllEntry)]
                 if not drop_nproj or isProj(conll_tokens): # keep going if it's projective or we're not dropping non-projective sents
-                #dropping the proj for exploring swap
-                #if not isProj([t for t in tokens if isinstance(t, ConllEntry)]):
+                # dropping the proj for exploring swap
+                # if not isProj([t for t in tokens if isinstance(t, ConllEntry)]):
                     inorder_tokens = inorder(conll_tokens)
-                    for i,t in enumerate(inorder_tokens):
+                    for i, t in enumerate(inorder_tokens):
                         t.projective_order = i
                     for tok in conll_tokens:
                         tok.rdeps = [i.id for i in conll_tokens if i.parent_id == tok.id]
@@ -270,7 +287,7 @@ def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=F
                     else:
                         yield tokens
                 else:
-                    #print 'Non-projective sentence dropped'
+                    # print 'Non-projective sentence dropped'
                     dropped += 1
                 read += 1
             tokens = [root]
@@ -284,10 +301,10 @@ def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=F
     if hard_lim and yield_count < maxSize:
         print 'Warning: unable to yield ' + str(maxSize) + ' sentences, only ' + str(yield_count) + ' found'
 
-# TODO: deal with case where there are still unyielded tokens
-# e.g. when there is no newline at end of file
-#    if len(tokens) > 1:
-#        yield tokens
+    # TODO: deal with case where there are still unyielded tokens
+    # e.g. when there is no newline at end of file
+    #    if len(tokens) > 1:
+    #        yield tokens
 
     print read, 'sentences read'
 
@@ -301,6 +318,7 @@ def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=F
     te = time.time()
     print 'Time: %.2gs'%(te-ts)
 
+
 def write_conll(fn, conll_gen):
     print "Writing to " + fn
     sents = 0
@@ -313,18 +331,19 @@ def write_conll(fn, conll_gen):
             fh.write('\n')
         print "Wrote " + str(sents) + " sentences"
 
+
 def write_conll_multiling(conll_gen, languages):
     lang_dict = {language.name:language for language in languages}
     cur_lang = conll_gen[0][0].language_id
     outfile = lang_dict[cur_lang].outfilename
-    fh = codecs.open(outfile,'w',encoding='utf-8')
+    fh = codecs.open(outfile, 'w', encoding='utf-8')
     print "Writing to " + outfile
     for sentence in conll_gen:
         if cur_lang != sentence[0].language_id:
             fh.close()
             cur_lang = sentence[0].language_id
             outfile = lang_dict[cur_lang].outfilename
-            fh = codecs.open(outfile,'w',encoding='utf-8')
+            fh = codecs.open(outfile, 'w', encoding='utf-8')
             print "Writing to " + outfile
         for entry in sentence[1:]:
             fh.write(unicode(entry) + '\n')

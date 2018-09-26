@@ -1,10 +1,12 @@
+import utils, time, random
+import numpy as np
+import pdb
+
 from utils import ParseForest, read_conll, write_conll
 from multilayer_perceptron import MLP
 from feature_extractor import FeatureExtractor
 from operator import itemgetter
 from itertools import chain
-import utils, time, random
-import numpy as np
 from copy import deepcopy
 
 class ArcHybridLSTM:
@@ -28,28 +30,27 @@ class ArcHybridLSTM:
         self.shareMLP = options.shareMLP
         self.config_lembed = options.lembed_config
 
-
-        #vectors used
+        # vectors used
         self.headFlag = options.headFlag
         self.rlMostFlag = options.rlMostFlag
         self.rlFlag = options.rlFlag
         self.k = options.k
 
-        #dimensions depending on extended features
+        # dimensions depending on extended features
         self.nnvecs = (1 if self.headFlag else 0) + (2 if self.rlFlag or self.rlMostFlag else 0)
-        self.feature_extractor = FeatureExtractor(self.model,words,rels,langs,w2i,ch,self.nnvecs,options)
+        self.feature_extractor = FeatureExtractor(self.model, words, rels, langs, w2i, ch, self.nnvecs, options)
         self.irels = self.feature_extractor.irels
 
-        #mlps
-        mlp_in_dims = options.lstm_output_size*2*self.nnvecs*(self.k+1)
+        # mlps
+        mlp_in_dims = options.lstm_output_size * 2 * self.nnvecs * (self.k+1)
         if self.config_lembed:
             mlp_in_dims += options.lang_emb_size
 
         h1 = options.mlp_hidden_dims
         h2 = options.mlp_hidden2_dims
         if not options.multiling or self.shareMLP:
-            self.unlabeled_MLP = MLP(self.model,mlp_in_dims, h1,h2,4, self.activation)
-            self.labeled_MLP = MLP(self.model,mlp_in_dims, h1,h2,2*len(rels)+2,self.activation)
+            self.unlabeled_MLP = MLP(self.model,mlp_in_dims, h1, h2, 4, self.activation)
+            self.labeled_MLP = MLP(self.model,mlp_in_dims, h1, h2, 2*len(rels)+2, self.activation)
         else:
             self.labeled_mlpdict = {}
             for lang in self.feature_extractor.langs:
@@ -60,6 +61,7 @@ class ArcHybridLSTM:
             for lang in self.feature_extractor.langs:
                 self.unlabeled_mlpdict[lang] = MLP(self.model, mlp_in_dims,
                                              h1,h2,4,self.activation)
+
 
     def __evaluate(self, stack, buf, train):
         """

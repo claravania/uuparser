@@ -1,11 +1,14 @@
 from optparse import OptionParser, OptionGroup
 from arc_hybrid import ArcHybridLSTM
 from options_manager import OptionsManager
-import pickle, utils, os, time, sys, copy, itertools, re, random
 from shutil import copyfile
-import codecs
 
-def run(om,options,i):
+import pickle, utils, os, time, sys, copy, itertools, re, random
+import codecs
+import pdb
+
+
+def run(om, options, i):
 
     if options.multiling:
         outdir = options.outdir
@@ -16,11 +19,10 @@ def run(om,options,i):
     if options.shared_task:
         outdir = options.shared_task_outdir
 
-    if not options.predict: # training
-
+    if not options.predict:  # training mode
         print 'Preparing vocab'
         if options.multiling:
-            path_is_dir=True,
+            path_is_dir = True,
             words, w2i, pos, cpos, rels, langs, ch = utils.vocab(om.languages,\
                                                                  path_is_dir,
                                                                  options.shareWordLookup,\
@@ -42,7 +44,7 @@ def run(om,options,i):
         if options.continueModel is not None:
             parser.Load(options.continueModel)
 
-        for epoch in xrange(options.first_epoch, options.first_epoch+options.epochs):
+        for epoch in xrange(options.first_epoch, options.first_epoch + options.epochs):
 
             print 'Starting epoch ' + str(epoch)
 
@@ -64,16 +66,16 @@ def run(om,options,i):
                     for lang in pred_langs:
                         lang.outfilename = os.path.join(lang.outdir, 'dev_epoch_' + str(epoch) + '.conllu')
                         print "Predicting on dev data for " + lang.name
-                    devdata = utils.read_conll_dir(pred_langs,"dev")
+                    devdata = utils.read_conll_dir(pred_langs, "dev")
                     pred = list(parser.Predict(devdata))
-                    if len(pred)>0:
-                        utils.write_conll_multiling(pred,pred_langs)
+                    if len(pred) > 0:
+                        utils.write_conll_multiling(pred, pred_langs)
                     else:
                         print "Warning: prediction empty"
                     if options.pred_eval:
                         for lang in pred_langs:
                             print "Evaluating dev prediction for " + lang.name
-                            utils.evaluate(lang.dev_gold,lang.outfilename,om.conllu)
+                            utils.evaluate(lang.dev_gold, lang.outfilename, om.conllu)
                 else: # monolingual case
                     if cur_treebank.pred_dev:
                         print "Predicting on dev data for " + cur_treebank.name
@@ -291,7 +293,6 @@ each")
     parser.add_option_group(multiling_opt)
 
 
-
     (options, args) = parser.parse_args()
 
     # really important to do this before anything else to make experiments reproducible
@@ -299,4 +300,4 @@ each")
 
     om = OptionsManager(options)
     for i in range(om.iterations):
-        run(om,options,i)
+        run(om, options, i)

@@ -2,8 +2,9 @@ import dynet as dy
 import random, codecs
 from bilstm import BiLSTM
 
+
 class FeatureExtractor(object):
-    def __init__(self,model,wordsCount,rels,langs,words,ch,nnvecs,options):
+    def __init__(self, model, wordsCount, rels, langs, words, ch, nnvecs, options):
         """
         Options handling
         """
@@ -64,7 +65,7 @@ class FeatureExtractor(object):
         self.rels = {word: ind for ind, word in enumerate(rels)}
 
         """BILSTMS"""
-        #word
+        # word
         if not self.multiling or self.shareBiLSTM:
             if not self.disable_bilstm:
                 self.bilstm1 = BiLSTM(lstm_input_size, self.lstm_output_size, model,
@@ -83,18 +84,18 @@ class FeatureExtractor(object):
                 self.bilstm2[lang] = BiLSTM(2* self.lstm_output_size, self.lstm_output_size, model,
                                             dropout_rate=0.33)
 
-        #char
+        # char
         if self.char_lembed:
             char_in_dims = self.char_emb_size + self.lang_emb_size
         else:
             char_in_dims = self.char_emb_size
 
         if not self.multiling or self.shareCharBiLSTM:
-            self.char_bilstm = BiLSTM(char_in_dims,self.char_lstm_output_size,self.model,dropout_rate=0.33)
+            self.char_bilstm = BiLSTM(char_in_dims, self.char_lstm_output_size, self.model, dropout_rate=0.33)
         else:
             self.char_bilstms = {}
             for lang in self.langs:
-                self.char_bilstms[lang] = BiLSTM(char_in_dims,self.char_lstm_output_size,self.model,dropout_rate=0.33)
+                self.char_bilstms[lang] = BiLSTM(char_in_dims, self.char_lstm_output_size, self.model, dropout_rate=0.33)
 
         """LOOKUPS"""
         if not self.multiling or self.shareCharLookup:
@@ -117,10 +118,11 @@ class FeatureExtractor(object):
 
         """Padding"""
         self.word2lstm = model.add_parameters((self.lstm_output_size * 2, lstm_input_size))
-        self.word2lstmbias = model.add_parameters((self.lstm_output_size *2))
-        self.chPadding = model.add_parameters((self.char_lstm_output_size *2))
+        self.word2lstmbias = model.add_parameters((self.lstm_output_size * 2))
+        self.chPadding = model.add_parameters((self.char_lstm_output_size * 2))
 
-    def get_char_vec(self,word,dropout,lang=None,langvec=None):
+
+    def get_char_vec(self, word, dropout, lang=None, langvec=None):
         if word.form == "*root*":
             word.chVec = self.chPadding.expr() # use the padding vector if it's the word token
         else:
@@ -138,6 +140,7 @@ class FeatureExtractor(object):
                 word.chVec = self.char_bilstms[lang].get_sequence_vector(char_vecs,dropout)
             else:
                 word.chVec = self.char_bilstm.get_sequence_vector(char_vecs,dropout)
+
 
     def Init(self):
         #TODO: This function makes me cry
@@ -168,11 +171,12 @@ class FeatureExtractor(object):
                                                                                           + self.word2lstmbias.expr() )
                 self.emptyVecs[lang] = self.paddingVecs[lang] if self.nnvecs == 1 else dy.concatenate([self.paddingVecs[lang] for _ in xrange(self.nnvecs)])
 
-    def getWordEmbeddings(self, sentence, train):
-        lang = sentence[0].language_id
 
+    def getWordEmbeddings(self, sentence, train):
+
+        lang = sentence[0].language_id
         for root in sentence:
-            #word
+            # word
             if not self.multiling or self.shareWordLookup:
                 wordcount = float(self.wordsCount.get(root.norm, 0))
             else:
@@ -189,13 +193,13 @@ class FeatureExtractor(object):
             else:
                 root.langvec = None
 
-            #char
+            # char
             if not self.multiling or self.shareCharBiLSTM:
                 if self.char_lembed:
                     langVec = self.langslookup[self.langs[lang]]
-                    self.get_char_vec(root,train, langvec=langvec)
+                    self.get_char_vec(root, train, langvec=langvec)
                 else:
-                    self.get_char_vec(root,train)
+                    self.get_char_vec(root, train)
 
             else:
                 self.get_char_vec(root,train, lang=lang)
@@ -218,15 +222,16 @@ class FeatureExtractor(object):
                                                     root.langvec]))
 
         if not self.multiling or self.shareBiLSTM:
-            self.bilstm1.set_token_vecs(sentence,train)
-            self.bilstm2.set_token_vecs(sentence,train)
+            self.bilstm1.set_token_vecs(sentence, train)
+            self.bilstm2.set_token_vecs(sentence, train)
         else:
-            self.bilstm1[lang].set_token_vecs(sentence,train)
-            self.bilstm2[lang].set_token_vecs(sentence,train)
+            self.bilstm1[lang].set_token_vecs(sentence, train)
+            self.bilstm2[lang].set_token_vecs(sentence, train)
 
 
     def get_external_embeddings(self,external_embedding_file,model):
-        external_embedding_fp = codecs.open(external_embedding_file,'r',encoding='utf-8')
+
+        external_embedding_fp = codecs.open(external_embedding_file, 'r', encoding='utf-8')
         external_embedding_fp.readline()
         self.external_embedding = {}
         for line in external_embedding_fp:

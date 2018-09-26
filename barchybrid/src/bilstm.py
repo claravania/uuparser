@@ -1,12 +1,15 @@
 import dynet as dy
 
+
 class BiLSTM(object):
-    def __init__(self,in_dim,out_dim,model,dropout_rate=None):
+
+    def __init__(self, in_dim, out_dim, model, dropout_rate=None):
         self.dropout_rate = dropout_rate
         self.surfaceBuilders = [dy.VanillaLSTMBuilder(1, in_dim, out_dim, model),
                                 dy.VanillaLSTMBuilder(1, in_dim, out_dim, model)]
 
-    def set_token_vecs(self,sequence,dropout):
+
+    def set_token_vecs(self, sequence, dropout):
         """
         Get the forward and backward vectors of tokens in a sequence
         and concatenate them
@@ -33,7 +36,8 @@ class BiLSTM(object):
         for token in sequence:
             token.vec = dy.concatenate( [token.fvec, token.bvec] )
 
-    def get_sequence_vector(self,sequence,dropout):
+
+    def get_sequence_vector(self, sequence, dropout):
         """
         Pass a sequence of vectors through the BiLSTM. Return the sequence
         vector.
