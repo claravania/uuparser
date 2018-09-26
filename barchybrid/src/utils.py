@@ -166,7 +166,6 @@ def vocab(conll_path, path_is_dir=False, shareWordDict=True, shareCharDict=True)
 
     cur_lang = ""
     for sentence in data:
-        pdb.set_trace()
 
         if sentence[0].language_id != cur_lang:
             cur_lang = sentence[0].language_id
@@ -345,9 +344,11 @@ def write_conll_multiling(conll_gen, languages):
             outfile = lang_dict[cur_lang].outfilename
             fh = codecs.open(outfile, 'w', encoding='utf-8')
             print "Writing to " + outfile
+
         for entry in sentence[1:]:
             fh.write(unicode(entry) + '\n')
         fh.write('\n')
+    fh.close()
 
 
 def parse_list_arg(l):
@@ -359,21 +360,24 @@ def parse_list_arg(l):
     else:
         return [el for el in l.split(" ")]
 
+
 numberRegex = re.compile("[0-9]+|[0-9]+\\.[0-9]+|[0-9]+[0-9,]+");
 def normalize(word):
     return 'NUM' if numberRegex.match(word) else word.lower()
 
-def evaluate(gold,test,conllu):
-    # scoresfile = test + '.txt'
-    scoresfile = test
+
+def evaluate(gold, test, conllu):
+    scoresfile = test + '.score'
     print "Writing to " + scoresfile
     if not conllu:
         #os.system('perl src/utils/eval.pl -g ' + gold + ' -s ' + test  + ' > ' + scoresfile + ' &')
         os.system('perl src/utils/eval.pl -g ' + gold + ' -s ' + test  + ' > ' + scoresfile )
     else:
-        os.system('python src/utils/evaluation_script/conll17_ud_eval.py -v -w src/utils/evaluation_script/weights.clas ' + gold + ' ' + test + ' > ' + scoresfile)
-    score = get_LAS_score(scoresfile,conllu)
+        os.system('python src/utils/evaluation_script/conll17_ud_eval.py -v -w src/utils/evaluation_script/weights.clas ' + gold + ' ' + test + ' > ' + 
+            scoresfile)
+    score = get_LAS_score(scoresfile, conllu)
     return score
+
 
 def inorder(sentence):
     queue = [sentence[0]]
@@ -390,11 +394,14 @@ def inorder(sentence):
         return results
     return inorder_helper(sentence,queue[0].id)
 
+
 def set_python_seed(seed):
     random.seed(seed)
 
+
 def generate_seed():
     return random.randint(0,10**9) # this range seems to work for Dynet and Python's random function
+
 
 def set_seeds(options):
     global dynet_seed
@@ -417,7 +424,7 @@ def set_seeds(options):
 
 def get_LAS_score(filename, conllu=True):
     score = None
-    with codecs.open(filename,'r',encoding='utf-8') as fh:
+    with codecs.open(filename, 'r', encoding='utf-8') as fh:
         if conllu:
             for line in fh:
                 if re.match(r'^LAS',line):
