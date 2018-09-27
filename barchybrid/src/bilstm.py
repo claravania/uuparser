@@ -8,7 +8,6 @@ class BiLSTM(object):
         self.surfaceBuilders = [dy.VanillaLSTMBuilder(1, in_dim, out_dim, model),
                                 dy.VanillaLSTMBuilder(1, in_dim, out_dim, model)]
 
-
     def set_token_vecs(self, sequence, dropout):
         """
         Get the forward and backward vectors of tokens in a sequence
@@ -24,17 +23,17 @@ class BiLSTM(object):
             self.surfaceBuilders[0].set_dropout(0)
             self.surfaceBuilders[1].set_dropout(0)
 
-        forward  = self.surfaceBuilders[0].initial_state()
+        forward = self.surfaceBuilders[0].initial_state()
         backward = self.surfaceBuilders[1].initial_state()
 
         for ftoken, rtoken in zip(sequence, reversed(sequence)):
-            forward = forward.add_input( ftoken.vec )
-            backward = backward.add_input( rtoken.vec )
+            forward = forward.add_input(ftoken.vec)
+            backward = backward.add_input(rtoken.vec)
             ftoken.fvec = forward.output()
             rtoken.bvec = backward.output()
 
         for token in sequence:
-            token.vec = dy.concatenate( [token.fvec, token.bvec] )
+            token.vec = dy.concatenate([token.fvec, token.bvec])
 
 
     def get_sequence_vector(self, sequence, dropout):
@@ -51,12 +50,11 @@ class BiLSTM(object):
             self.surfaceBuilders[0].set_dropout(0)
             self.surfaceBuilders[1].set_dropout(0)
 
-        forward  = self.surfaceBuilders[0].initial_state()
+        forward = self.surfaceBuilders[0].initial_state()
         backward = self.surfaceBuilders[1].initial_state()
 
         for ftoken, rtoken in zip(sequence, reversed(sequence)):
-            forward = forward.add_input( ftoken )
-            backward = backward.add_input( rtoken )
+            forward = forward.add_input(ftoken)
+            backward = backward.add_input(rtoken)
 
         return dy.concatenate([forward.output(), backward.output()])
-
