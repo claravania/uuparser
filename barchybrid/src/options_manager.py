@@ -147,11 +147,14 @@ class OptionsManager(object):
                 if options.predict and options.multi_monoling:
                     language.modeldir = "%s/%s" % (options.modeldir,
                                                    language.iso_id)
-                    # import pdb
-                    # pdb.set_trace()
-                    model = "%s/%s" % (language.modeldir,
-                                       options.include.split()[lang_index] + '.model')
                     
+                    if options.multiling:
+                        model = "%s/%s" % (language.modeldir,
+                                           '-'.join(options.include.split()) + '.model')
+                    else:
+                        model = "%s/%s" % (language.modeldir,
+                                           options.include.split()[lang_index] + '.model')
+
                     # in multilingual case need model to be found in first
                     # language specified
                     if not os.path.exists(model):
@@ -165,6 +168,7 @@ class OptionsManager(object):
                                     if otherl.lcode == otherl.iso_id:
                                         language.modeldir = "%s/%s" % (
                                             options.modeldir, otherl.iso_id)
+
 
     # creates dev data by siphoning off a portion of the training data (when necessary)
     # sets up treebank for prediction and model selection on dev data
@@ -246,6 +250,7 @@ class OptionsManager(object):
             utils.write_conll(test_file, testdata)
             treebank.test_gold = test_file
             treebank.testfile = test_file
+            
 
     def deal_with_multiling(self, options):
         if options.word == 'shared':

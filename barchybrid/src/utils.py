@@ -249,7 +249,7 @@ def read_conll_dir(languages, filetype, maxSize=-1):
     elif filetype == "dev":
         return chain(*(read_conll(lang.devfile, lang.name) for lang in languages if lang.pred_dev))
     elif filetype == "test":
-        return chain(*(read_conll(lang.testfile, lang.name) for lang in languages))
+        return chain(*(read_conll(lang.devfile, lang.name) for lang in languages))
 
 
 def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=False, drop_nproj=False):

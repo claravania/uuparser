@@ -57,10 +57,15 @@ def run(om, options, i):
             parser.Load(options.continueModel)
 
         best_dev_las = 0.0
+        best_epoch = 0
+        patience = 3
         model_file = os.path.join(outdir, model_name + '.model')
         for epoch in xrange(options.first_epoch, options.first_epoch + options.epochs):
 
+            print '\n'
+            print '===================='
             print 'Starting epoch ' + str(epoch)
+            print 'Patience ' + str(patience)
 
             if options.multiling:
                 traindata = list(utils.read_conll_dir(
@@ -69,8 +74,10 @@ def run(om, options, i):
                 traindata = list(utils.read_conll(
                     cur_treebank.trainfile, cur_treebank.iso_id, options.max_sentences))
 
+
             parser.Train(traindata)
-            print 'Finished epoch ' + str(epoch)
+            print 'Finished epoch ' + str(epoch) + '\n'
+            
 
             if options.pred_dev:  # use the model to predict on dev data
                 if options.multiling:
@@ -81,23 +88,36 @@ def run(om, options, i):
                         lang.outfilename = os.path.join(
                             lang.outdir, 'dev_epoch_' + str(epoch) + '.conllu')
                         print "Predicting on dev data for " + lang.name
+
                     devdata = utils.read_conll_dir(pred_langs, "dev")
                     pred = list(parser.Predict(devdata))
+                    
                     if len(pred) > 0:
                         utils.write_conll_multiling(pred, pred_langs)
                     else:
                         print "Warning: prediction empty"
+                    
                     if options.pred_eval:
                         dev_las = 0
                         for lang in pred_langs:
                             print "Evaluating dev prediction for " + lang.name
                             dev_las += utils.evaluate(lang.dev_gold,
                                                       lang.outfilename, om.conllu)
+                        
+                        print "*********Total LAS: ", str(dev_las)
                         if dev_las > best_dev_las:
                             parser.Save(model_file)
+                            best_epoch = epoch
+                            best_dev_las = dev_las
+                            patience = 3
+                        else:
+                            patience -= 1
+
 
                 else:  # monolingual case
                     if cur_treebank.pred_dev:
+
+                        dev_las = 0
                         print "Predicting on dev data for " + cur_treebank.name
                         devdata = utils.read_conll(
                             cur_treebank.devfile, cur_treebank.iso_id)
@@ -105,16 +125,37 @@ def run(om, options, i):
                             outdir, 'dev_epoch_' + str(epoch) + ('.conll' if not om.conllu else '.conllu'))
                         pred = list(parser.Predict(devdata))
                         utils.write_conll(cur_treebank.outfilename, pred)
+                        
                         if options.pred_eval:
                             print "Evaluating dev prediction for " + cur_treebank.name
-                            score = utils.evaluate(
+                            dev_las = utils.evaluate(
                                 cur_treebank.dev_gold, cur_treebank.outfilename, om.conllu)
-                            if options.model_selection:
-                                if score > cur_treebank.dev_best[1]:
-                                    cur_treebank.dev_best = [epoch, score]
-                                    parser.Save(model_file)
+                            print "LAS: ", str(dev_las)
 
-            # comment this as now we only save the best model
+                            if dev_las > best_dev_las:
+                                parser.Save(model_file)
+                                best_epoch = epoch
+                                best_dev_las = dev_las
+                                patience = 3
+                            else:
+                                patience -= 1
+
+                            # if options.model_selection:
+                            #     if score > cur_treebank.dev_best[1]:
+                            #         cur_treebank.dev_best = [epoch, score]
+                            #         parser.Save(model_file)
+
+
+            if patience == 0:
+                print ''
+                print 'No improvement on development set, stop training'
+                print 'Best LAS' + str(best_dev_las)
+                print 'Best epoch' + str(best_epoch)
+                print ''
+                break
+
+
+            # CV: comment this as now we only save the best model
             # if epoch == options.epochs: # at the last epoch choose which model to copy to barchybrid.model
             #     if not options.model_selection:
             #         best_epoch = options.epochs # take the final epoch if model selection off completely (for example multilingual case)
@@ -129,6 +170,7 @@ def run(om, options, i):
 
             #     print "Copying " + bestmodel_file + " to " + model_file
             #     copyfile(bestmodel_file, model_file)
+
 
     else:  # if predict - so
 
@@ -145,6 +187,7 @@ def run(om, options, i):
             words, w2i, pos, rels, cpos, langs, stored_opt, ch = pickle.load(
                 paramsfp)
 
+
             parser = ArcHybridLSTM(words, pos, rels, cpos, langs, w2i,
                                    ch, stored_opt)
 
@@ -154,6 +197,9 @@ def run(om, options, i):
             if options.multiling:
                 testdata = utils.read_conll_dir(om.languages, "test")
             else:
+                # this is very hacky to allow predictions on dev set
+                cur_treebank.testfile = options.testfile
+                cur_treebank.test_gold = options.testfile
                 testdata = utils.read_conll(
                     cur_treebank.testfile, cur_treebank.iso_id)
 
@@ -162,6 +208,7 @@ def run(om, options, i):
             if options.multiling:
                 for l in om.languages:
                     l.outfilename = os.path.join(outdir, l.outfilename)
+
                 pred = list(parser.Predict(testdata))
                 utils.write_conll_multiling(pred, om.languages)
             else:
@@ -180,8 +227,8 @@ def run(om, options, i):
                 if options.multiling:
                     for l in om.languages:
                         print "Evaluating on " + l.name
-                        score = utils.evaluate(
-                            l.test_gold, l.outfilename, om.conllu)
+                        l.test_gold = l.test_gold.replace('test', 'dev')
+                        score = utils.evaluate(l.test_gold, l.outfilename, om.conllu)
                         print "Obtained LAS F1 score of %.2f on %s" % (score, l.name)
                 else:
                     print "Evaluating on " + cur_treebank.name
@@ -265,6 +312,8 @@ each")
                      help="Memory to assign Dynet in MB", default=512)
     group.add_option("--dynet-gpu", action="store_true", default=False,
                      help="flag for using GPU")
+    group.add_option("--dynet-devices", type="str", default="",
+                     help="CPU/GPU devices to use")
     group.add_option("--learning-rate", type="float", metavar="FLOAT",
                      help="Learning rate for neural network optimizer", default=0.001)
     group.add_option("--char-emb-size", type="int", metavar="INTEGER",
