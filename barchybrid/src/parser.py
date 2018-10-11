@@ -5,6 +5,7 @@ import pickle, utils, os, time, sys, copy, itertools, re, random
 from shutil import copyfile
 import codecs
 
+
 def run(om,options,i):
 
     if options.multiling:
@@ -110,11 +111,8 @@ def run(om,options,i):
             modeldir = om.languages[i].modeldir
             prefix = os.path.join(outdir, options.include.split()[i])
 
-        # print(prefix)
-
-        # import pdb
-        # pdb.set_trace()
-
+        if not options.extract_vectors:
+            prefix = None
 
         params = os.path.join(modeldir,options.params)
         print 'Reading params from ' + params
@@ -136,14 +134,14 @@ def run(om,options,i):
             if options.multiling:
                 for l in om.languages:
                     l.outfilename = os.path.join(outdir, l.outfilename)
-                pred = list(parser.Predict(testdata))
+                pred = list(parser.Predict(testdata, prefix))
                 utils.write_conll_multiling(pred,om.languages)
             else:
                 if cur_treebank.outfilename:
                     cur_treebank.outfilename = os.path.join(outdir,cur_treebank.outfilename)
                 else:
                     cur_treebank.outfilename = os.path.join(outdir, 'out' + ('.conll' if not om.conllu else '.conllu'))
-                utils.write_conll(cur_treebank.outfilename, parser.Predict(testdata))
+                utils.write_conll(cur_treebank.outfilename, parser.Predict(testdata, prefix))
 
             te = time.time()
 
@@ -202,6 +200,8 @@ each")
         help="Disable choosing of model from best/last epoch", dest="model_selection", default=True)
     group.add_option("--use-default-seed", action="store_true",
         help="Use default random seed for Python", default=False)
+    group.add_option("--extract_vectors", action="store_true",
+        help="Extract intermediate representations of the model (predict mode only)", default=False)
 
     group.add_option("--continue", dest="continueTraining", action="store_true", default=False)
     group.add_option("--continueModel", metavar="FILE",
@@ -296,8 +296,6 @@ each")
     multiling_opt.add_option("--char", type="string",default='shared')
 
     parser.add_option_group(multiling_opt)
-
-
 
     (options, args) = parser.parse_args()
 

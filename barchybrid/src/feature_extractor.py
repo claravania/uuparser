@@ -168,7 +168,8 @@ class FeatureExtractor(object):
                                                                                           + self.word2lstmbias.expr() )
                 self.emptyVecs[lang] = self.paddingVecs[lang] if self.nnvecs == 1 else dy.concatenate([self.paddingVecs[lang] for _ in xrange(self.nnvecs)])
 
-    def getWordEmbeddings(self, sentence, train):
+    def getWordEmbeddings(self, sentence, train, get_vectors=False):
+
         lang = sentence[0].language_id
 
         for root in sentence:
@@ -223,6 +224,13 @@ class FeatureExtractor(object):
         else:
             self.bilstm1[lang].set_token_vecs(sentence,train)
             self.bilstm2[lang].set_token_vecs(sentence,train)
+
+        if get_vectors:
+            data_vec = list()
+            for token in sentence:
+                data_tuple = (token.cpos, token.feats, token.chVec.value(), token.vec.value())
+                data_vec.append(data_tuple)
+            return data_vec 
 
 
     def get_external_embeddings(self,external_embedding_file,model):
