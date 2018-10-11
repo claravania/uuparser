@@ -249,6 +249,8 @@ def read_conll_dir(languages, filetype, maxSize=-1):
     elif filetype == "dev":
         return chain(*(read_conll(lang.devfile, lang.name) for lang in languages if lang.pred_dev))
     elif filetype == "test":
+        return chain(*(read_conll(lang.testfile, lang.name) for lang in languages))
+    elif filetype == "analyse": # eval on dev files
         return chain(*(read_conll(lang.devfile, lang.name) for lang in languages))
 
 
@@ -278,6 +280,7 @@ def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=F
         tok = line.strip().split('\t')
         if not tok or line.strip() == '':
             if len(tokens) > 1:
+
                 conll_tokens = [t for t in tokens if isinstance(t, ConllEntry)]
                 # keep going if it's projective or we're not dropping
                 # non-projective sents
@@ -304,6 +307,7 @@ def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=F
                                 print "Capping size of corpus at " + str(yield_count) + " sentences"
                                 break
                     else:
+                        # CV: can print out tokens from here
                         yield tokens
                 else:
                     # print 'Non-projective sentence dropped'

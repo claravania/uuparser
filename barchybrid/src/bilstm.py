@@ -35,6 +35,9 @@ class BiLSTM(object):
         for token in sequence:
             token.vec = dy.concatenate([token.fvec, token.bvec])
 
+            # import pdb
+            # pdb.set_trace()
+
 
     def get_sequence_vector(self, sequence, dropout):
         """

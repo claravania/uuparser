@@ -190,9 +190,10 @@ class FeatureExtractor(object):
                     [self.paddingVecs[lang] for _ in xrange(self.nnvecs)])
 
 
-    def getWordEmbeddings(self, sentence, train):
+    def getWordEmbeddings(self, sentence, train, get_vectors=False):
 
         lang = sentence[0].language_id
+
         for root in sentence:
             # word
             if not self.multiling or self.shareWordLookup:
@@ -214,6 +215,7 @@ class FeatureExtractor(object):
                     root.language_id]] if self.lang_emb_size > 0 else None
             else:
                 root.langvec = None
+
 
             # char
             if not self.multiling or self.shareCharBiLSTM:
@@ -249,6 +251,12 @@ class FeatureExtractor(object):
             self.bilstm1[lang].set_token_vecs(sentence, train)
             self.bilstm2[lang].set_token_vecs(sentence, train)
 
+        if get_vectors:
+            data_vec = list()
+            for token in sentence:
+                data_tuple = (token.cpos, token.feats, token.chVec.value(), token.vec.value())
+                data_vec.append(data_tuple)
+            return data_vec 
 
 
     def get_external_embeddings(self, external_embedding_file, model):

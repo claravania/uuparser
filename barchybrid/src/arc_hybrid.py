@@ -1,6 +1,7 @@
 import utils
 import time
 import random
+import codecs
 import numpy as np
 import pdb
 
@@ -234,9 +235,18 @@ class ArcHybridLSTM:
         return costs, shift_case
 
 
-    def Predict(self, data):
+    def Predict(self, data, prefix=None):
+
         reached_max_swap = 0
+
+        if prefix:
+            femb = codecs.open(prefix + '-embedding.vec', 'w', encoding='utf-8')
+            fenc = codecs.open(prefix + '-encoder.vec', 'w', encoding='utf-8')
+            flabel = codecs.open(prefix + '-label.txt', 'w', encoding='utf-8')
+
+
         for iSentence, osentence in enumerate(data, 1):
+            
             sentence = deepcopy(osentence)
             reached_swap_for_i_sentence = False
             max_swap = 2 * len(sentence)
@@ -245,7 +255,14 @@ class ArcHybridLSTM:
             conll_sentence = [entry for entry in sentence if isinstance(
                 entry, utils.ConllEntry)]
             conll_sentence = conll_sentence[1:] + [conll_sentence[0]]
-            self.feature_extractor.getWordEmbeddings(conll_sentence, False)
+
+            data_vec = self.feature_extractor.getWordEmbeddings(conll_sentence, False, get_vectors=True)
+            
+            for dat in data_vec:
+                flabel.write(dat[0] + '\t' + dat[1] + '\n')
+                femb.write(str(dat[2]) + '\n')
+                fenc.write(str(dat[3]) + '\n')
+
             stack = ParseForest([])
             buf = ParseForest(conll_sentence)
 
@@ -283,6 +300,11 @@ class ArcHybridLSTM:
                 tok_o.pred_relation = tok.pred_relation
                 tok_o.pred_parent_id = tok.pred_parent_id
             yield osentence
+
+        if prefix: 
+            femb.close()
+            fenc.close()
+            flabel.close()
             
 
     def Train(self, trainData):

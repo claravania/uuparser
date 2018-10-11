@@ -57,10 +57,12 @@ def run(om, options, i):
             parser.Load(options.continueModel)
 
         best_dev_las = 0.0
+        best_lang_las = {}
         best_epoch = 0
         patience = 3
+        max_epoch = 50
         model_file = os.path.join(outdir, model_name + '.model')
-        for epoch in xrange(options.first_epoch, options.first_epoch + options.epochs):
+        for epoch in xrange(options.first_epoch, max_epoch):
 
             print '\n'
             print '===================='
@@ -99,16 +101,23 @@ def run(om, options, i):
                     
                     if options.pred_eval:
                         dev_las = 0
+                        total_las = 0
+                        las = {}
                         for lang in pred_langs:
                             print "Evaluating dev prediction for " + lang.name
-                            dev_las += utils.evaluate(lang.dev_gold,
+                            dev_las = utils.evaluate(lang.dev_gold,
                                                       lang.outfilename, om.conllu)
-                        
-                        print "*********Total LAS: ", str(dev_las)
+                            las[lang] = dev_las
+                            total_las += dev_las
+                            print "LAS: ", str(dev_las)
+
+                        print "Avg LAS: ", str(total_las // 2)
+
                         if dev_las > best_dev_las:
                             parser.Save(model_file)
                             best_epoch = epoch
                             best_dev_las = dev_las
+                            best_lang_las = las
                             patience = 3
                         else:
                             patience -= 1
@@ -147,12 +156,20 @@ def run(om, options, i):
 
 
             if patience == 0:
-                print ''
-                print 'No improvement on development set, stop training'
-                print 'Best LAS' + str(best_dev_las)
-                print 'Best epoch' + str(best_epoch)
-                print ''
-                break
+                if epoch < options.epochs:
+                    patience = 3
+                else:
+                    print ''
+                    print 'No improvement on development set, stop training'
+                    if options.multiling:
+                        print 'Best LAS:'
+                        for lang in best_lang_las:
+                            print lang + ': ' + str(best_lang_las[las])
+                    else:
+                        print 'Best LAS: ' + str(best_dev_las)
+                    print 'Best epoch: ' + str(best_epoch)
+                    print ''
+                    break
 
 
             # CV: comment this as now we only save the best model
@@ -177,16 +194,19 @@ def run(om, options, i):
         if options.multiling:
             modeldir = options.modeldir
             model_name = '-'.join(options.include.split()) + '.model'
+            prefix = os.path.join(outdir, '-'.join(options.include.split()))
         else:
             modeldir = om.languages[i].modeldir
             model_name = options.include.split()[i] + '.model'
+            prefix = os.path.join(outdir, options.include.split()[i])
 
         params = os.path.join(modeldir, options.params)
         print 'Reading params from ' + params
         with open(params, 'r') as paramsfp:
+
+            # load dictionaries
             words, w2i, pos, rels, cpos, langs, stored_opt, ch = pickle.load(
                 paramsfp)
-
 
             parser = ArcHybridLSTM(words, pos, rels, cpos, langs, w2i,
                                    ch, stored_opt)
@@ -195,7 +215,7 @@ def run(om, options, i):
             parser.Load(model)
 
             if options.multiling:
-                testdata = utils.read_conll_dir(om.languages, "test")
+                testdata = utils.read_conll_dir(om.languages, "analyse")
             else:
                 # this is very hacky to allow predictions on dev set
                 cur_treebank.testfile = options.testfile
@@ -209,7 +229,7 @@ def run(om, options, i):
                 for l in om.languages:
                     l.outfilename = os.path.join(outdir, l.outfilename)
 
-                pred = list(parser.Predict(testdata))
+                pred = list(parser.Predict(testdata, prefix))
                 utils.write_conll_multiling(pred, om.languages)
             else:
                 if cur_treebank.outfilename:
@@ -219,7 +239,7 @@ def run(om, options, i):
                     cur_treebank.outfilename = os.path.join(
                         outdir, 'out' + ('.conll' if not om.conllu else '.conllu'))
                 utils.write_conll(cur_treebank.outfilename,
-                                  parser.Predict(testdata))
+                                  parser.Predict(testdata, prefix))
 
             te = time.time()
 
