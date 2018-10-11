@@ -5,6 +5,8 @@ from operator import itemgetter
 from itertools import chain
 import utils, time, random
 import numpy as np
+import os
+import codecs
 from copy import deepcopy
 
 class ArcHybridLSTM:
@@ -216,8 +218,14 @@ class ArcHybridLSTM:
         return costs,shift_case
 
 
-    def Predict(self, data):
+    def Predict(self, data, prefix=None):
         reached_max_swap = 0
+
+        if prefix:
+            femb = codecs.open(os.path.join(prefix, 'embedding.vec', 'w', encoding='utf-8'))
+            fenc = codecs.open(os.path.join(prefix, 'encoder.vec', 'w', encoding='utf-8'))
+            flabel = codecs.open(os.path.join(prefix, 'label.txt', 'w', encoding='utf-8'))
+
         for iSentence, osentence in enumerate(data,1):
             sentence = deepcopy(osentence)
             reached_swap_for_i_sentence = False

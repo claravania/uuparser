@@ -105,8 +105,16 @@ def run(om,options,i):
 
         if options.multiling:
             modeldir = options.modeldir
+            prefix = os.path.join(modeldir, '-'.join(options.include.split()))
         else:
             modeldir = om.languages[i].modeldir
+            prefix = os.path.join(outdir, options.include.split()[i])
+
+        # print(prefix)
+
+        # import pdb
+        # pdb.set_trace()
+
 
         params = os.path.join(modeldir,options.params)
         print 'Reading params from ' + params
@@ -143,6 +151,7 @@ def run(om,options,i):
                 if options.multiling:
                     for l in om.languages:
                         print "Evaluating on " + l.name
+                        l.test_gold = l.test_gold.replace('test', 'dev')
                         score = utils.evaluate(l.test_gold,l.outfilename,om.conllu)
                         print "Obtained LAS F1 score of %.2f on %s" %(score,l.name)
                 else:
