@@ -19,31 +19,71 @@ def run(om,options,i):
 
     if not options.predict: # training
 
-        print 'Preparing vocab'
-        if options.multiling:
-            path_is_dir=True,
-            words, w2i, pos, cpos, rels, langs, ch = utils.vocab(om.languages,\
-                                                                 path_is_dir,
-                                                                 options.shareWordLookup,\
-                                                                 options.shareCharLookup)
-
+        fineTune = False
+        start_from = 1
+        if options.continueModel is None:
+            continueTraining = False
         else:
-            words, w2i, pos, cpos, rels, langs, ch = utils.vocab(cur_treebank.trainfile)
+            continueTraining = True
+            trainedModel = options.continueModel
+            if options.fineTune:
+                fineTune = True
+            else:
+                start_from = options.first_epoch - 1
 
-        paramsfile = os.path.join(outdir, options.params)
-        with open(paramsfile, 'w') as paramsfp:
-            print 'Saving params to ' + paramsfile
-            pickle.dump((words, w2i, pos, rels, cpos, langs,
-                         options, ch), paramsfp)
-            print 'Finished collecting vocab'
+        if not continueTraining:
+            print 'Preparing vocab'
+            if options.multiling:
+                path_is_dir=True,
+                words, w2i, pos, cpos, rels, langs, ch = utils.vocab(om.languages,\
+                                                                     path_is_dir,
+                                                                     options.shareWordLookup,\
+                                                                     options.shareCharLookup)
 
+            else:
+                words, w2i, pos, cpos, rels, langs, ch = utils.vocab(cur_treebank.trainfile)
+
+            paramsfile = os.path.join(outdir, options.params)
+            with open(paramsfile, 'w') as paramsfp:
+                print 'Saving params to ' + paramsfile
+                pickle.dump((words, w2i, pos, rels, cpos, langs,
+                             options, ch), paramsfp)
+                print 'Finished collecting vocab'
+        else:
+            paramsfile = os.path.join(outdir, options.params)
+            with open(paramsfile, 'rb') as paramsfp:
+                print 'Load params from ' + paramsfile
+                words, w2i, pos, rels, cpos, langs, options, ch = pickle.load(paramsfp)
+                print 'Finished loading vocab'
+
+        max_epochs = options.first_epoch + options.epochs
         print 'Initializing blstm arc hybrid:'
         parser = ArcHybridLSTM(words, pos, rels, cpos, langs, w2i,
                                ch, options)
-        if options.continueModel is not None:
-            parser.Load(options.continueModel)
 
-        for epoch in xrange(options.first_epoch, options.first_epoch+options.epochs):
+        if continueTraining:
+            if not fineTune: 
+                # continue training only, not doing fine tuning
+                options.first_epoch = start_from + 1
+                max_epochs = options.epochs
+            else:
+                # fine tune model
+                options.first_epoch = options.epochs + 1
+                max_epochs = options.first_epoch + 15
+                print 'Fine tune model for another', max_epochs - options.first_epoch, 'epochs'
+
+            parser.Load(trainedModel)
+            
+
+        best_multi_las = -1
+        best_multi_epoch = 0
+        
+        if continueTraining:
+            train_stats = codecs.open(os.path.join(outdir, 'train.stats'), 'a', encoding='utf-8')
+        else:
+            train_stats = codecs.open(os.path.join(outdir, 'train.stats'), 'w', encoding='utf-8')
+                
+        for epoch in xrange(options.first_epoch, max_epochs + 1):
 
             print 'Starting epoch ' + str(epoch)
 
@@ -53,13 +93,13 @@ def run(om,options,i):
                 traindata = list(utils.read_conll(cur_treebank.trainfile, cur_treebank.iso_id,options.max_sentences))
 
             parser.Train(traindata)
+            train_stats.write(unicode('Epoch ' + str(epoch) + '\n'))
             print 'Finished epoch ' + str(epoch)
 
-            model_file = os.path.join(outdir, options.model + str(epoch))
+            model_file = os.path.join(outdir, options.model + '.tmp')
             parser.Save(model_file)
 
             if options.pred_dev: # use the model to predict on dev data
-
                 if options.multiling:
                     pred_langs = [lang for lang in om.languages if lang.pred_dev] # languages which have dev data on which to predict
                     for lang in pred_langs:
@@ -67,14 +107,24 @@ def run(om,options,i):
                         print "Predicting on dev data for " + lang.name
                     devdata = utils.read_conll_dir(pred_langs,"dev")
                     pred = list(parser.Predict(devdata))
+
                     if len(pred)>0:
                         utils.write_conll_multiling(pred,pred_langs)
                     else:
                         print "Warning: prediction empty"
+                    
                     if options.pred_eval:
+                        total_las = 0
                         for lang in pred_langs:
                             print "Evaluating dev prediction for " + lang.name
-                            utils.evaluate(lang.dev_gold,lang.outfilename,om.conllu)
+                            las_score = utils.evaluate(lang.dev_gold, lang.outfilename,om.conllu)
+                            total_las += las_score
+                            train_stats.write(unicode('Dev LAS ' + lang.name + ': ' + str(las_score) + '\n'))
+                        if options.model_selection:
+                            if total_las > best_multi_las:
+                                best_multi_las = total_las
+                                best_multi_epoch = epoch 
+
                 else: # monolingual case
                     if cur_treebank.pred_dev:
                         print "Predicting on dev data for " + cur_treebank.name
@@ -84,61 +134,100 @@ def run(om,options,i):
                         utils.write_conll(cur_treebank.outfilename, pred)
                         if options.pred_eval:
                             print "Evaluating dev prediction for " + cur_treebank.name
-                            score = utils.evaluate(cur_treebank.dev_gold,cur_treebank.outfilename,om.conllu)
+                            las_score = utils.evaluate(cur_treebank.dev_gold, cur_treebank.outfilename, om.conllu)
                             if options.model_selection:
-                                if score > cur_treebank.dev_best[1]:
-                                    cur_treebank.dev_best = [epoch,score]
+                                if las_score > cur_treebank.dev_best[1]:
+                                    cur_treebank.dev_best = [epoch, las_score]
+                                    train_stats.write(unicode('Dev LAS ' + cur_treebank.name + ': ' + str(las_score) + '\n'))
+                                    
 
-            if epoch == options.epochs: # at the last epoch choose which model to copy to barchybrid.model
+            if epoch == max_epochs: # at the last epoch choose which model to copy to barchybrid.model
                 if not options.model_selection:
                     best_epoch = options.epochs # take the final epoch if model selection off completely (for example multilingual case)
                 else:
-                    best_epoch = cur_treebank.dev_best[0] # will be final epoch by default if model selection not on for this treebank
-                    if cur_treebank.model_selection:
-                        print "Best dev score of " + str(cur_treebank.dev_best[1]) + " found at epoch " + str(cur_treebank.dev_best[0])
+                    if options.multiling:
+                        best_epoch = best_multi_epoch
+                    else:
+                        best_epoch = cur_treebank.dev_best[0] # will be final epoch by default if model selection not on for this treebank
+                        if cur_treebank.model_selection:
+                            print "Best dev score of " + str(cur_treebank.dev_best[1]) + " found at epoch " + str(cur_treebank.dev_best[0])
 
-                bestmodel_file = os.path.join(outdir,"barchybrid.model" + str(best_epoch))
+                bestmodel_file = os.path.join(outdir,"barchybrid.model.tmp")
                 model_file = os.path.join(outdir,"barchybrid.model")
+                if fineTune:
+                    model_file = os.path.join(outdir,"barchybrid.tuned.model")
+                print "Best epoch: " + str(best_epoch)
                 print "Copying " + bestmodel_file + " to " + model_file
                 copyfile(bestmodel_file,model_file)
 
+        train_stats.close()
+
     else: #if predict - so
+
+        # import pdb;pdb.set_trace()
+        eval_type = options.evaltype
+        print "Eval type: ", eval_type
+        if eval_type == "train":
+            if options.multiling:
+                for l in om.languages:
+                    l.test_gold = l.test_gold.replace('test', 'train')
+            else:
+                cur_treebank.testfile = cur_treebank.trainfile
+                cur_treebank.test_gold = cur_treebank.trainfile
+
+        elif eval_type == "dev":
+            if options.multiling:
+                for l in om.languages:
+                    l.test_gold = l.test_gold.replace('test', 'dev')
+            else:
+                cur_treebank.testfile = cur_treebank.devfile
+                cur_treebank.test_gold = cur_treebank.devfile
 
         if options.multiling:
             modeldir = options.modeldir
-            prefix = os.path.join(modeldir, '-'.join(options.include.split()))
+            if options.fineTune:
+                prefix = [os.path.join(outdir, os.path.basename(l.test_gold) + '-tuned') for l in om.languages] 
+            else:
+                prefix = [os.path.join(outdir, os.path.basename(l.test_gold)) for l in om.languages] 
         else:
             modeldir = om.languages[i].modeldir
-            prefix = os.path.join(outdir, options.include.split()[i])
+            if options.fineTune:
+                prefix = os.path.join(outdir, os.path.basename(cur_treebank.testfile)) + '-tuned'
+            else:
+                prefix = os.path.join(outdir, os.path.basename(cur_treebank.testfile))
 
         if not options.extract_vectors:
             prefix = None
 
-        params = os.path.join(modeldir,options.params)
+
+        params = os.path.join(modeldir, options.params)
         print 'Reading params from ' + params
         with open(params, 'r') as paramsfp:
             words, w2i, pos, rels, cpos, langs, stored_opt, ch = pickle.load(paramsfp)
 
             parser = ArcHybridLSTM(words, pos, rels, cpos, langs, w2i,
                                ch, stored_opt)
+
+            if options.fineTune:
+                options.model = options.model.replace('.model', '.tuned.model')
             model = os.path.join(modeldir, options.model)
             parser.Load(model)
 
             if options.multiling:
-                testdata = utils.read_conll_dir(om.languages,"test")
+                testdata = utils.read_conll_dir(om.languages, eval_type)
             else:
-                testdata = utils.read_conll(cur_treebank.testfile,cur_treebank.iso_id)
+                testdata = utils.read_conll(cur_treebank.testfile, cur_treebank.iso_id)
 
             ts = time.time()
 
             if options.multiling:
                 for l in om.languages:
-                    l.outfilename = os.path.join(outdir, l.outfilename)
+                    l.outfilename = os.path.join(outdir, eval_type + "-" + l.outfilename)
                 pred = list(parser.Predict(testdata, prefix))
                 utils.write_conll_multiling(pred,om.languages)
             else:
                 if cur_treebank.outfilename:
-                    cur_treebank.outfilename = os.path.join(outdir,cur_treebank.outfilename)
+                    cur_treebank.outfilename = os.path.join(outdir, eval_type + "-" + cur_treebank.outfilename)
                 else:
                     cur_treebank.outfilename = os.path.join(outdir, 'out' + ('.conll' if not om.conllu else '.conllu'))
                 utils.write_conll(cur_treebank.outfilename, parser.Predict(testdata, prefix))
@@ -149,12 +238,11 @@ def run(om,options,i):
                 if options.multiling:
                     for l in om.languages:
                         print "Evaluating on " + l.name
-                        l.test_gold = l.test_gold.replace('test', 'dev')
-                        score = utils.evaluate(l.test_gold,l.outfilename,om.conllu)
-                        print "Obtained LAS F1 score of %.2f on %s" %(score,l.name)
+                        score = utils.evaluate(l.test_gold, l.outfilename, om.conllu)
+                        print "Obtained LAS F1 score of %.2f on %s" %(score, l.name)
                 else:
                     print "Evaluating on " + cur_treebank.name
-                    score = utils.evaluate(cur_treebank.test_gold,cur_treebank.outfilename,om.conllu)
+                    score = utils.evaluate(cur_treebank.test_gold, cur_treebank.outfilename, om.conllu)
                     print "Obtained LAS F1 score of %.2f on %s" %(score,cur_treebank.name)
 
             print 'Finished predicting'
@@ -179,9 +267,11 @@ each")
     group.add_option("--trainfile", metavar="FILE", help="Annotated CONLL(U) train file")
     group.add_option("--devfile", metavar="FILE", help="Annotated CONLL(U) dev file")
     group.add_option("--testfile", metavar="FILE", help="Annotated CONLL(U) test file")
+    group.add_option("--evaltype", type="string", default="test", help="type of eval: train, dev, test")
     group.add_option("--epochs", type="int", metavar="INTEGER", default=30,
         help='Number of epochs')
     group.add_option("--predict", help='Parse', action="store_true", default=False)
+    group.add_option("--fineTune", help='Parse', action="store_true", default=False)
     group.add_option("--multiling", action="store_true", default=False,
         help='Train a multilingual parser with language embeddings')
     group.add_option("--max-sentences", type="int", metavar="INTEGER",

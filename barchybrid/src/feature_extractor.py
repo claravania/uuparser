@@ -3,7 +3,7 @@ import random, codecs
 from bilstm import BiLSTM
 
 class FeatureExtractor(object):
-    def __init__(self,model,wordsCount,rels,langs,words,ch,nnvecs,options):
+    def __init__(self, model, wordsCount, rels, langs, words, ch, nnvecs, options):
         """
         Options handling
         """
@@ -16,7 +16,7 @@ class FeatureExtractor(object):
         self.multiling = options.multiling #and options.use_lembed
         self.external_embedding = None
         if options.external_embedding is not None:
-            self.get_external_embeddings(options.external_embedding,model)
+            self.get_external_embeddings(options.external_embedding, model, wordsCount)
         self.disable_bilstm = options.disable_bilstm
         self.disable_second_bilstm = options.disable_second_bilstm
 
@@ -227,23 +227,39 @@ class FeatureExtractor(object):
 
         if get_vectors:
             data_vec = list()
-            for token in sentence:
-                data_tuple = (token.cpos, token.feats, token.chVec.value(), token.vec.value())
-                data_vec.append(data_tuple)
+            for i, token in enumerate(sentence):
+                if token.form != '*root*':
+                    import pdb
+                    wordvec = token.wordvec.value()
+                    if self.external_embedding is not None:
+                        wordvec += token.evec.value()
+                    data_tuple = (i+1, token.form, token.cpos, token.feats, token.chVec.value(), wordvec, token.vec.value())
+                    data_vec.append(data_tuple)
             return data_vec 
 
 
-    def get_external_embeddings(self,external_embedding_file,model):
-        external_embedding_fp = codecs.open(external_embedding_file,'r',encoding='utf-8')
-        external_embedding_fp.readline()
+    def get_external_embeddings(self, external_embedding_file, model, wordsCount):
+        
+        # NOTE: this is modified to load fastText embeddings!
         self.external_embedding = {}
+        external_embedding_fp = codecs.open(external_embedding_file, 'r', encoding='utf-8')
+
+        # read first line --- number of tokens and embedding dimension
+        self.edim = int(external_embedding_fp.readline().split()[1])
+        num_tokens = 0
+
         for line in external_embedding_fp:
             line = line.strip().split()
-            self.external_embedding[line[0]] = [float(f) for f in line[1:]]
+            if len(line) != self.edim + 1: 
+                continue
+            else:
+                if line[0] in wordsCount:
+                    self.external_embedding[line[0]] = [float(f) for f in line[1:]]
+                    num_tokens += 1
+
 
         external_embedding_fp.close()
-
-        self.edim = len(self.external_embedding.values()[0])
+        # self.edim = len(self.external_embedding.values()[0])
         self.noextrn = [0.0 for _ in xrange(self.edim)] #???
         self.extrnd = {word: i + 3 for i, word in enumerate(self.external_embedding)}
         self.elookup = model.add_lookup_parameters((len(self.external_embedding) + 3, self.edim))
@@ -252,4 +268,6 @@ class FeatureExtractor(object):
         self.extrnd['*PAD*'] = 1
         self.extrnd['*INITIAL*'] = 2
 
-        print 'Load external embedding. Vector dimensions', self.edim
+        print '-' * 100
+        print 'Load external embedding. Vector dimensions:', self.edim, ', number of tokens:', num_tokens
+        print '-' * 100

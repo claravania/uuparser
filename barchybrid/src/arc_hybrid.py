@@ -30,7 +30,6 @@ class ArcHybridLSTM:
         self.shareMLP = options.shareMLP
         self.config_lembed = options.lembed_config
 
-
         #vectors used
         self.headFlag = options.headFlag
         self.rlMostFlag = options.rlMostFlag
@@ -39,7 +38,7 @@ class ArcHybridLSTM:
 
         #dimensions depending on extended features
         self.nnvecs = (1 if self.headFlag else 0) + (2 if self.rlFlag or self.rlMostFlag else 0)
-        self.feature_extractor = FeatureExtractor(self.model,words,rels,langs,w2i,ch,self.nnvecs,options)
+        self.feature_extractor = FeatureExtractor(self.model, words, rels, langs, w2i, ch, self.nnvecs, options)
         self.irels = self.feature_extractor.irels
 
         #mlps
@@ -193,7 +192,6 @@ class ArcHybridLSTM:
         else:
             right_cost = len(s0[0].rdeps) + int(s0[0].parent_id != s1[0].id and s0[0].id in s0[0].parent_entry.rdeps)
 
-
         if len(scores[2]) == 0:
             shift_cost = 1
             shift_case = 0
@@ -224,14 +222,36 @@ class ArcHybridLSTM:
         get_vectors = False
 
         if prefix:
+            pref_idx = 0
+            if type(prefix) == list:
+                pf = prefix[pref_idx]
+            else:
+                pf = prefix
 
-            print 'Extract feature: True'
-            femb = codecs.open(prefix + '-embedding.vec', 'w', encoding='utf-8')
-            fenc = codecs.open(prefix + '-encoder.vec', 'w', encoding='utf-8')
-            flabel = codecs.open(prefix + '-label.txt', 'w', encoding='utf-8')
+            fcemb = codecs.open(pf + '-char-emb.vec', 'w', encoding='utf-8')
+            fwemb = codecs.open(pf + '-word-emb.vec', 'w', encoding='utf-8')
+            fenc = codecs.open(pf + '-encoder.vec', 'w', encoding='utf-8')
             get_vectors = True
+            lang_name = ''
 
-        for iSentence, osentence in enumerate(data,1):
+        for iSentence, osentence in enumerate(data, 1):
+            if type(prefix) == list:
+                if iSentence == 1:
+                    lang_name = osentence[0].language_id
+                    print 'Extract feature:', pf, lang_name
+                else:
+                    if lang_name != osentence[0].language_id:
+                        fcemb.close()
+                        fwemb.close()
+                        fenc.close()
+                        pref_idx += 1
+                        pf = prefix[pref_idx]
+                        fcemb = codecs.open(pf + '-char-emb.vec', 'w', encoding='utf-8')
+                        fwemb = codecs.open(pf + '-word-emb.vec', 'w', encoding='utf-8')
+                        fenc = codecs.open(pf + '-encoder.vec', 'w', encoding='utf-8')
+                        lang_name = osentence[0].language_id
+                        print 'Extract feature:', pf, lang_name
+
 
             sentence = deepcopy(osentence)
             reached_swap_for_i_sentence = False
@@ -246,9 +266,10 @@ class ArcHybridLSTM:
 
             if get_vectors:
                 for dat in data_vec:
-                    flabel.write(dat[0] + '\t' + dat[1] + '\n')
-                    femb.write(str(dat[2]) + '\n')
-                    fenc.write(str(dat[3]) + '\n')
+                    # flabel.write(str(dat[0]) + '\t' + dat[1] + '\t' + dat[2] + '\t' + dat[3] + '\n')
+                    fcemb.write(','.join([str(x) for x in dat[4]]) + '\n')
+                    fwemb.write(','.join([str(x) for x in dat[5]]) + '\n')
+                    fenc.write(','.join([str(x) for x in dat[6]]) + '\n')
 
             stack = ParseForest([])
             buf = ParseForest(conll_sentence)
@@ -285,9 +306,10 @@ class ArcHybridLSTM:
             yield osentence
 
         if prefix: 
-            femb.close()
+            fcemb.close()
+            fwemb.close()
             fenc.close()
-            flabel.close()
+            # flabel.close()
 
 
     def Train(self, trainData):
@@ -326,6 +348,12 @@ class ArcHybridLSTM:
             sentence = deepcopy(sentence) # ensures we are working with a clean copy of sentence and allows memory to be recycled each time round the loop
 
             conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
+
+            # for e in conll_sentence:
+            #     print unicode(e)
+
+            # print('****')
+
             conll_sentence = conll_sentence[1:] + [conll_sentence[0]]
             self.feature_extractor.getWordEmbeddings(conll_sentence, True)
             stack = ParseForest([])

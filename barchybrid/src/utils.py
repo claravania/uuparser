@@ -47,6 +47,7 @@ class ConllEntry:
                   self.deps, self.misc]
         return '\t'.join(['_' if v is None else v for v in values])
 
+
 class Treebank(object):
     def __init__(self,trainfile,devfile,testfile):
         self.name = 'noname'
@@ -56,6 +57,7 @@ class Treebank(object):
         self.test_gold = testfile
         self.testfile = testfile
         self.outfilename = None
+
 
 class UDtreebank(Treebank):
     def __init__(self,treebank_info,location, shared_task=False, shared_task_data_dir=None):
@@ -90,6 +92,7 @@ class UDtreebank(Treebank):
             self.test_gold= files_prefix + "-ud-test.conllu"
             self.dev_gold= files_prefix + "-ud-dev.conllu"
             self.outfilename = self.iso_id + '.conllu'
+
 
 class ParseForest:
     def __init__(self, sentence):
@@ -214,18 +217,19 @@ def conll_dir_to_list(languages, data_dir,shared_task=False, shared_task_data_di
         json_str = ud_iso_file.read()
         iso_dict = json.loads(json_str)
         treebank_metadata = iso_dict.items()
-    json_treebanks= [UDtreebank(treebank_info,data_dir,shared_task, shared_task_data_dir) \
+        json_treebanks= [UDtreebank(treebank_info,data_dir,shared_task, shared_task_data_dir) \
             for treebank_info in treebank_metadata ]
     return json_treebanks
 
-def read_conll_dir(languages,filetype,maxSize=-1):
+def read_conll_dir(languages, filetype, maxSize=-1):
     #print "Max size for each corpus: ", maxSize
     if filetype == "train":
-        return chain(*(read_conll(lang.trainfile,lang.name,maxSize) for lang in languages))
+        return chain(*(read_conll(lang.trainfile, lang.name,maxSize) for lang in languages))
     elif filetype == "dev":
-        return chain(*(read_conll(lang.devfile,lang.name) for lang in languages if lang.pred_dev))
-    elif filetype == "test":
         return chain(*(read_conll(lang.devfile,lang.name) for lang in languages))
+    elif filetype == "test":
+        return chain(*(read_conll(lang.testfile,lang.name) for lang in languages))
+        
 
 def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=False, drop_nproj=False):
     # hard lim means capping the corpus size across the whole training procedure
@@ -254,21 +258,29 @@ def read_conll(filename, language=None, maxSize=-1, hard_lim=False, vocab_prep=F
                     inorder_tokens = inorder(conll_tokens)
                     for i,t in enumerate(inorder_tokens):
                         t.projective_order = i
-                    for tok in conll_tokens:
-                        tok.rdeps = [i.id for i in conll_tokens if i.parent_id == tok.id]
-                        if tok.id != 0:
-                            tok.parent_entry = [i for i in conll_tokens if i.id == tok.parent_id][0]
-                    if maxSize > 0:
-                        if not hard_lim:
-                            all_tokens.append(tokens)
+
+                    if len(conll_tokens) !=  len(inorder_tokens):  # handle invalid tree when use augmented data
+                        print "Invalid augment tree, drop sample."
+                    else:
+                        for tok in conll_tokens:
+                            # print unicode(tok)
+                            # if tok.parent_id == -1:
+                            #     tok.parent_id = tok.id - 1
+                            tok.rdeps = [i.id for i in conll_tokens if i.parent_id == tok.id]
+                            if tok.id != 0:
+                                tok.parent_entry = [i for i in conll_tokens if i.id == tok.parent_id][0]
+                        if maxSize > 0:
+                            if not hard_lim:
+                                all_tokens.append(tokens)
+                            else:
+                                yield tokens
+                                yield_count += 1
+                                if yield_count == maxSize:
+                                    print "Capping size of corpus at " + str(yield_count) + " sentences"
+                                    break;
                         else:
                             yield tokens
-                            yield_count += 1
-                            if yield_count == maxSize:
-                                print "Capping size of corpus at " + str(yield_count) + " sentences"
-                                break;
-                    else:
-                        yield tokens
+                    
                 else:
                     #print 'Non-projective sentence dropped'
                     dropped += 1
@@ -344,7 +356,7 @@ numberRegex = re.compile("[0-9]+|[0-9]+\\.[0-9]+|[0-9]+[0-9,]+");
 def normalize(word):
     return 'NUM' if numberRegex.match(word) else word.lower()
 
-def evaluate(gold,test,conllu):
+def evaluate(gold, test, conllu):
     scoresfile = test + '.txt'
     print "Writing to " + scoresfile
     if not conllu:

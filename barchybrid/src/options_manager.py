@@ -96,9 +96,9 @@ class OptionsManager(object):
                     model = "%s/%s"%(options.modeldir,options.model)
                     if not os.path.exists(model): # in multilingual case need model to be found in first language specified
                         raise Exception("Model not found. Path tried: %s"%model)
-                if options.model_selection: # can only do model selection for monolingual case
-                    print "Warning: model selection on dev data not available for multilingual case"
-                    options.model_selection = False
+                # if options.model_selection: # can only do model selection for monolingual case
+                #     print "Warning: model selection on dev data not available for multilingual case"
+                #     options.model_selection = False
             else:
                 options.multi_monoling = True
                 self.iterations = len(self.languages)
